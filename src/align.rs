@@ -1,8 +1,8 @@
 //! This aligner implementation is based on [WhisperTimeSync](https://github.com/EtienneAb3d/WhisperTimeSync) which itself seems to be based on a variation of the [Needleman-Wunsch](https://en.wikipedia.org/wiki/Needleman%E2%80%93Wunsch_algorithm) sequence alignment algorithm.
 
-// [Needleman-Wunsch](https://en.wikipedia.org/wiki/Needleman%E2%80%93Wunsch_algorithm) sequence
-// alignment algorithm but minimizing cost instead of maximizing score and with distinct gap costs
-// for items.
+/// [Needleman-Wunsch](https://en.wikipedia.org/wiki/Needleman%E2%80%93Wunsch_algorithm) sequence
+/// alignment algorithm but minimizing cost instead of maximizing score and with distinct gap costs
+/// for items.
 pub fn align(
     a: usize,
     b: usize,
@@ -151,6 +151,7 @@ fn pairwise_cost(i: usize, j: usize, al: &TokenInfo, bl: &TokenInfo) -> f64 {
     2.0 - length_term + pos_term
 }
 
+/// [`align`] specialized for aligning sequences of strings.
 pub fn text_align(
     a: impl Iterator<Item = String>,
     b: impl Iterator<Item = String>,
