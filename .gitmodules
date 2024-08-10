@@ -1,0 +1,3 @@
+[submodule "whisper-cpp-sys/whisper.cpp"]
+	path = whisper-cpp-sys/whisper.cpp
+	url = https://github.com/ggerganov/whisper.cpp
