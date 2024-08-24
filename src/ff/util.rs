@@ -74,7 +74,7 @@ unsafe extern "C" fn avio_read_impl<R: Read>(user: *mut c_void, buf: *mut u8, bu
     }
 }
 
-unsafe extern "C" fn avio_write_impl<W: Write>(user: *mut c_void, buf: *mut u8, buf_size: c_int) -> i32 {
+unsafe extern "C" fn avio_write_impl<W: Write>(user: *mut c_void, buf: *const u8, buf_size: c_int) -> i32 {
     let writer = &mut *(user as *mut W);
 
     match writer.write(std::slice::from_raw_parts(buf, buf_size as usize)) {
