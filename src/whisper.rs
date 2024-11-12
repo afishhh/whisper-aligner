@@ -1,15 +1,13 @@
 use std::{
     borrow::Cow,
     ffi::{c_void, CStr, CString},
-    fmt::Display,
-    io::{Read, Write},
-    num::{NonZero, NonZeroUsize},
+    io::Read,
     path::PathBuf,
 };
 
 use serde::{Deserialize, Serialize};
 
-use crate::ff;
+use crate::{ff, silero};
 
 fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     if s == 0.0 {
@@ -147,7 +145,21 @@ pub struct Transcription {
     pub segments: Vec<Vec<Token>>,
 }
 
-pub fn transcribe(file: impl Read, language: String, model: PathBuf) -> Transcription {
+#[derive(Debug, Clone)]
+pub struct SileroOptions {
+    pub path: PathBuf,
+    pub threshold: f32,
+    pub min_silence_seconds: f32,
+    pub min_trim_silence_seconds: f32,
+    pub speech_padding_seconds: f32,
+}
+
+pub fn transcribe(
+    file: impl Read,
+    language: String,
+    model: PathBuf,
+    silero: Option<SileroOptions>,
+) -> Transcription {
     let mut samples = vec![];
 
     unsafe {
@@ -162,6 +174,83 @@ pub fn transcribe(file: impl Read, language: String, model: PathBuf) -> Transcri
             ));
         }
     }
+
+    let speech_sections = if let Some(SileroOptions {
+        path,
+        threshold,
+        min_silence_seconds,
+        min_trim_silence_seconds,
+        speech_padding_seconds,
+    }) = silero
+    {
+        const HALF_A_SECOND_SAMPLES: usize = 8000;
+        assert!(min_silence_seconds > 0.5);
+        let min_silence_chunks = (min_silence_seconds * (16000. / 480.)) as usize;
+        let min_trim_silence_chunks = (min_trim_silence_seconds * (16000. / 480.)) as usize;
+        let padding_samples = (speech_padding_seconds * 16000.) as usize;
+        if padding_samples / 480 > std::cmp::min(min_silence_chunks, min_trim_silence_chunks) {
+            panic!("Speech padding is too large")
+        }
+        let trim_padding_samples = padding_samples;
+
+        let mut silero = silero::Silero::new(silero::SampleRate::Hz16000, path).unwrap();
+        let mut silence_chain_length = 0;
+        let mut speech_sections = vec![];
+        let mut current_start = 0;
+        let mut is_at_start = true;
+        for (i, chunk) in samples.chunks(480).enumerate() {
+            let mut padded;
+            let chunk = if chunk.len() < 480 {
+                padded = Vec::with_capacity(480);
+                padded.extend_from_slice(chunk);
+                padded.resize(480, 0.0);
+                padded.as_slice()
+            } else {
+                chunk
+            };
+            let speech_probability = silero.run(chunk).unwrap();
+
+            println!(
+                "silero: {i} chunk {:.2}s = {:.2}",
+                (i * 480) as f64 / 16000.0,
+                speech_probability
+            );
+
+            if speech_probability <= threshold {
+                silence_chain_length += 1;
+                if is_at_start {
+                    current_start = i * 480;
+                }
+            } else {
+                if is_at_start {
+                    current_start = current_start.saturating_sub(trim_padding_samples);
+                    is_at_start = false;
+                } else if silence_chain_length >= min_silence_chunks {
+                    speech_sections.push((
+                        current_start,
+                        (i - silence_chain_length) * 480 + padding_samples,
+                    ));
+                    current_start = i * 480 - padding_samples;
+                }
+                silence_chain_length = 0;
+            }
+        }
+
+        if silence_chain_length < min_trim_silence_chunks {
+            silence_chain_length = 0;
+        }
+
+        speech_sections.push((
+            current_start,
+            (samples.len() - silence_chain_length * 480)
+                .saturating_add(trim_padding_samples)
+                .clamp(0, samples.len()),
+        ));
+
+        speech_sections
+    } else {
+        vec![(0, samples.len())]
+    };
 
     let mut segments: Vec<Vec<Token>> = vec![];
 
@@ -185,12 +274,18 @@ pub fn transcribe(file: impl Read, language: String, model: PathBuf) -> Transcri
         wparams.no_timestamps = false;
         wparams.beam_search.beam_size = 5;
 
+        struct User {
+            time_offset: i64,
+            segments: *mut Vec<Vec<Token>>,
+        }
+
         unsafe extern "C" fn on_new_segment(
             ctx: *mut whisper_context,
             _whisper_state: *mut whisper_state,
             n_new: i32,
             user: *mut c_void,
         ) {
+            let user = &mut *(user as *mut User);
             let total = whisper_full_n_segments(ctx);
             for i in (total - n_new)..total {
                 let fixed =
@@ -208,25 +303,39 @@ pub fn transcribe(file: impl Read, language: String, model: PathBuf) -> Transcri
                     }
 
                     let basic = Token {
-                        start: data.t0,
-                        end: data.t1,
+                        start: user.time_offset + data.t0,
+                        end: user.time_offset + data.t1,
                         probability: data.p,
                         text: text.to_string(),
                     };
-                    basic.write_colored(&mut std::io::stdout());
+                    basic.write_colored(&mut std::io::stdout()).unwrap();
                     out.push(basic);
                 }
 
-                (*(user as *mut Vec<Vec<Token>>)).push(out);
+                (*user.segments).push(out);
                 println!()
             }
         }
 
         wparams.new_segment_callback = Some(on_new_segment);
-        wparams.new_segment_callback_user_data =
-            &mut segments as *mut Vec<Vec<Token>> as *mut c_void;
 
-        whisper_full(ctx, wparams, samples.as_ptr(), samples.len() as i32);
+        for (section_start, section_end) in speech_sections {
+            let mut user = User {
+                // time_offset is tens of milliseconds
+                time_offset: (section_start as f64 / (16000. / 100.)) as i64,
+                segments: &mut segments,
+            };
+
+            wparams.new_segment_callback_user_data = &mut user as *mut User as *mut c_void;
+
+            println!(
+                "Processing segment {:.2}s-{:.2}s with whisper",
+                section_start as f64 / 16000.,
+                section_end as f64 / 16000.
+            );
+            let section = &samples[section_start..section_end];
+            whisper_full(ctx, wparams, section.as_ptr(), section.len() as i32);
+        }
     }
 
     Transcription { language, segments }

@@ -1,9 +1,10 @@
 use clap::Parser;
 
 mod align;
-mod ff;
-mod whisper;
 mod cli;
+mod ff;
+mod silero;
+mod whisper;
 
 fn main() {
     cli::main(cli::Opts::parse())
