@@ -42,5 +42,6 @@ Whisper models can be downloaded using `whisper-cpp-sys/whisper.cpp/models/downl
 
 ### TODO
 
-- [ ] Implement silero VAD preprocessing for audio transcription
+- [X] Implement silero VAD preprocessing for audio transcription
+   - [ ] Improve: This has been technically implemented, but I'm not that happy with the results yet.
 - [ ] Figure out how to use whisper with DTW
