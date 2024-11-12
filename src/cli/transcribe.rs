@@ -19,10 +19,10 @@ pub struct Opts {
 
 #[derive(Parser)]
 pub struct VadOpts {
-    #[clap(long = "vad", default_value_t = true, requires = "path")]
+    #[clap(long = "vad", default_value_t = false, requires = "path")]
     enabled: bool,
     #[clap(long = "vad-silero-path")]
-    path: PathBuf,
+    path: Option<PathBuf>,
     #[clap(long = "vad-threshold", default_value_t = 0.3)]
     speech_threshold: f32,
     #[clap(long = "vad-min-duration", default_value_t = 5.0)]
@@ -45,7 +45,7 @@ pub fn main(
         language,
         model,
         vad.map(|x| SileroOptions {
-            path: x.path,
+            path: x.path.expect("path should be set if vad is enabled"),
             threshold: x.speech_threshold,
             min_silence_seconds: x.min_silence_seconds,
             min_trim_silence_seconds: 2.0,
