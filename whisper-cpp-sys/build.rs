@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap};
+use std::collections::BTreeMap;
 
 macro_rules! make_build_parameters_struct {
     // (@rec , $($tt: tt)*) => {
@@ -48,9 +48,14 @@ make_build_parameters_struct! {
 
 fn main() {
     let whisper_dir = std::env::current_dir().unwrap().join("whisper.cpp");
-    let params = BuildParameters::parse(std::fs::read_to_string(whisper_dir.join("build-parameters")).unwrap());
+    let params = BuildParameters::parse(
+        std::fs::read_to_string(whisper_dir.join("build-parameters")).unwrap(),
+    );
 
-    let all_flags = format!("{} {} {} {}", params.cflags, params.cxxflags, params.nvccflags, params.userflags);
+    let all_flags = format!(
+        "{} {} {} {}",
+        params.cflags, params.cxxflags, params.nvccflags, params.userflags
+    );
 
     println!("cargo:rustc-link-search={}", whisper_dir.to_str().unwrap());
     println!("cargo:rustc-link-lib=static=whisper");
