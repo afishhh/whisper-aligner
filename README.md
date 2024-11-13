@@ -1,6 +1,7 @@
 ## Whisper-assisted transcription alignment
 
 With support for Japanese text via [vibrato](https://github.com/daac-tools/vibrato) which itself is a Rust implementation of the [mecab](https://taku910.github.io/mecab/) tokenizer.
+Also supports the [silero](https://github.com/snakers4/silero-vad) Voice Activity Detector (VAD).
 
 ### Usage
 
@@ -22,6 +23,17 @@ Solution:
 3. `whisper-aligner align <WHISPER JSON FILE> <TRANSCRIPTION TEXT FILE> --output-vtt <OUTPUT VTT FILE> --vibrato-dictionary <UNCOMPRESSED VIBRATO DICTIONARY FILE>`<br/>
    The `--vibrato-dictionary` argument is optional but when omitted it will cause a simple whitespace-based tokenizer to be used instead of vibrato. This does not work well on Japanese.
 4. You now have a timestamped transcription in `<OUTPUT VTT FILE>`.
+
+### VAD Usage
+
+> [!WARNING]
+> While this feature is implemented and it works, you may find the results to be mixed. Messing with the parameters of audio splitting or the VAD threshold may improve the quality. Additionally consider that sometimes it may just not be worth it to use the VAD if whisper performs well enough.
+
+To use silero while creating a transcription add `--vad` to the `whisper-aligner transcribe` command-line. After enabling VAD the `--vad-silero-path` argument becomes mandatory and has to be supplied the path to the silero ONNX model.
+> [!NOTE]
+> The V4 version of silero can be downloaded [here](https://github.com/snakers4/silero-vad/blob/v4.0stable/files/silero_vad.onnx) ([permalink](https://github.com/snakers4/silero-vad/blob/915dd3d639b8333a52e001af095f87c5b7f1e0ac/files/silero_vad.onnx)).
+
+There are also a few additional parameters related to the audio splitting that can be fine tuned when using the vad, consult `whisper-aligner transcribe --help` for details.
 
 ### Building
 
